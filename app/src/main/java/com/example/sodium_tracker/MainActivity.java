@@ -20,12 +20,14 @@ import android.content.SharedPreferences;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
-    private EditText ingredientName, ingredientQuantity;
+    private EditText ingredientName, ingredientQuantity, servingCountField;
     private Spinner unitSpinner;
-    private TextView sodiumContent, totalSodiumText, sodiumWarning;
+    private TextView totalSodiumText, perServingSodiumText, sodiumWarning;
     private Button addButton, clearButton, saveButton;
     private ListView ingredientListView;
     private ArrayList<String> ingredientList;
@@ -34,27 +36,19 @@ public class MainActivity extends AppCompatActivity {
     private double totalSodium = 0;
     private SharedPreferences prefs;
     private ConstraintLayout layout;
+    private int servingCount = 1; // default to 1 to avoid divide by 0
+
+    private Map<String, Double> manualSodiumMap = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        layout = findViewById(R.id.mainLayout); // Make sure your root layout has this ID
-        prefs = PreferenceManager.getDefaultSharedPreferences(this);
 
-// Apply background color immediately
+        layout = findViewById(R.id.mainLayout);
+        prefs = PreferenceManager.getDefaultSharedPreferences(this);
         boolean isYellow = prefs.getBoolean("paleYellow", false);
         layout.setBackgroundColor(getResources().getColor(isYellow ? R.color.pale_yellow : android.R.color.white));
-
-        ConstraintLayout layout = findViewById(R.id.mainLayout);
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        //boolean isYellow = prefs.getBoolean("yellow_background", false);
-
-        //if (isYellow) {
-        //    layout.setBackgroundColor(getResources().getColor(R.color.pale_yellow));
-        //} else {
-        //    layout.setBackgroundColor(getResources().getColor(android.R.color.white));
-       // }
 
         bindViews();
         setupDatabase();
@@ -67,8 +61,7 @@ public class MainActivity extends AppCompatActivity {
         bottomNav.setOnItemSelectedListener(item -> {
             int id = item.getItemId();
             if (id == R.id.nav_database) {
-                Intent intent = new Intent(MainActivity.this, DatabaseActivity.class);
-                startActivityForResult(intent, 100);
+                startActivityForResult(new Intent(this, DatabaseActivity.class), 100);
                 return true;
             } else if (id == R.id.nav_daily_tracker) {
                 startActivity(new Intent(this, DailyTrackerActivity.class));
@@ -86,9 +79,10 @@ public class MainActivity extends AppCompatActivity {
     private void bindViews() {
         ingredientName = findViewById(R.id.ingredientName);
         ingredientQuantity = findViewById(R.id.ingredientQuantity);
+        servingCountField = findViewById(R.id.servingCount);
         unitSpinner = findViewById(R.id.spinner);
-        sodiumContent = findViewById(R.id.sodiumContent);
         totalSodiumText = findViewById(R.id.totalSodiumText);
+        perServingSodiumText = findViewById(R.id.perServingSodiumText);
         sodiumWarning = findViewById(R.id.sodiumWarning);
         addButton = findViewById(R.id.addButton);
         clearButton = findViewById(R.id.clearButton);
@@ -99,6 +93,7 @@ public class MainActivity extends AppCompatActivity {
         adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, ingredientList);
         ingredientListView.setAdapter(adapter);
     }
+
 
     private void setupListeners() {
         addButton.setOnClickListener(v -> addIngredient());
@@ -162,6 +157,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
     private void promptForSodiumInput(String name, double quantity, String unit) {
         EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
@@ -174,6 +170,10 @@ public class MainActivity extends AppCompatActivity {
                 .setPositiveButton("Add", (dialog, which) -> {
                     try {
                         double sodiumPerUnit = Double.parseDouble(input.getText().toString());
+
+                        // ✅ Store user's input for later use during save
+                        manualSodiumMap.put(name.toLowerCase(), sodiumPerUnit);
+
                         double sodiumAmount = quantity * sodiumPerUnit;
                         addIngredientToList(name, quantity, unit, sodiumAmount);
                     } catch (NumberFormatException e) {
@@ -185,21 +185,52 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void addIngredientToList(String name, double quantity, String unit, double sodiumAmount) {
-        sodiumContent.setText("Sodium: " + sodiumAmount + " mg");
-
         if (sodiumAmount == 0) {
-            sodiumContent.setTextColor(Color.RED);
             Toast.makeText(this, "Warning: Sodium is 0 mg. Check entry.", Toast.LENGTH_LONG).show();
-        } else {
-            sodiumContent.setTextColor(Color.BLACK);
         }
 
         totalSodium += sodiumAmount;
-        totalSodiumText.setText("Total Sodium: " + totalSodium + " mg");
+        //totalSodiumText.setText("Total Sodium: " + totalSodium + " mg");
+        totalSodiumText.setText(String.format("Total Sodium: %.2f mg", totalSodium));
 
-        ingredientList.add(name + " - " + quantity + " " + unit + " : " + sodiumAmount + " mg");
+        // Get serving count from input field
+        int servingCount;
+        try {
+            servingCount = Integer.parseInt(servingCountField.getText().toString().trim());
+            if (servingCount <= 0) servingCount = 1;
+        } catch (NumberFormatException e) {
+            servingCount = 1;
+        }
+
+        double perServing = sodiumAmount / servingCount;
+
+// ✅ This is only for display in the ingredient list
+        ingredientList.add(name + " - " + quantity + " " + unit + " : " +
+                String.format("%.2f", sodiumAmount) + " mg total | " +
+                String.format("%.2f", perServing) + " mg/serving");
+
+
         adapter.notifyDataSetChanged();
+        updatePerServingText(); // ← add this at the end
         updateSodiumWarning();
+
+    }
+
+    private void updatePerServingText() {
+        String servingsStr = servingCountField.getText().toString().trim();
+        if (!servingsStr.isEmpty()) {
+            try {
+                double servings = Double.parseDouble(servingsStr);
+                if (servings > 0) {
+                    double perServing = totalSodium / servings;
+                    //perServingSodiumText.setText("Per Serving Sodium: " + perServing + " mg");
+                    perServingSodiumText.setText(String.format("Per Serving Sodium: %.2f mg", perServing));
+
+                    return;
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+        perServingSodiumText.setText("Per Serving Sodium: N/A");
     }
     private double getConversionFactor(String userUnit, String dbUnit) {
         if (userUnit.equals(dbUnit)) return 1.0;
@@ -229,15 +260,18 @@ public class MainActivity extends AppCompatActivity {
     private void clearIngredientFields() {
         ingredientName.setText("");
         ingredientQuantity.setText("");
+        servingCountField.setText("");
         unitSpinner.setSelection(0);
-        sodiumContent.setText("");
+        //sodiumContent.setText("");
         totalSodium = 0;
         totalSodiumText.setText("Total Sodium: 0 mg");
+        perServingSodiumText.setText("Per Serving Sodium: N/A");
         sodiumWarning.setVisibility(View.GONE);
         totalSodiumText.setTextColor(Color.BLACK);
         ingredientList.clear();
         adapter.notifyDataSetChanged();
     }
+
 
     private void promptSaveRecipe() {
         if (ingredientList.isEmpty()) {
@@ -263,17 +297,28 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("Cancel", null)
                 .show();
     }
-
     private void saveRecipeToDatabase(String recipeName) {
+        String servingStr = servingCountField.getText().toString().trim();
+        int servingCount = 1;
+        try {
+            servingCount = Integer.parseInt(servingStr);
+            if (servingCount <= 0) servingCount = 1;
+        } catch (NumberFormatException e) {
+            servingCount = 1;
+        }
+
         Cursor checkCursor = database.rawQuery("SELECT RecipeID FROM Recipe WHERE Name = ?", new String[]{recipeName});
         long recipeId;
 
+        ContentValues recipeValues = new ContentValues();
+        recipeValues.put("Name", recipeName);
+        recipeValues.put("ServingCount", servingCount);
+
         if (checkCursor.moveToFirst()) {
             recipeId = checkCursor.getLong(0);
+            database.update("Recipe", recipeValues, "RecipeID = ?", new String[]{String.valueOf(recipeId)});
             database.delete("RecipeIngredient", "RecipeID = ?", new String[]{String.valueOf(recipeId)});
         } else {
-            ContentValues recipeValues = new ContentValues();
-            recipeValues.put("Name", recipeName);
             recipeId = database.insert("Recipe", null, recipeValues);
         }
         checkCursor.close();
@@ -289,7 +334,6 @@ public class MainActivity extends AppCompatActivity {
                     String unit = qtyAndUnit[1].trim();
 
                     double sodiumAmount = 0;
-                    boolean foundInDb = false;
 
                     Cursor sodiumCursor = database.rawQuery(
                             "SELECT SodiumPerUnit, Unit FROM SodiumTable WHERE LOWER(Ingredient) = ?",
@@ -297,29 +341,29 @@ public class MainActivity extends AppCompatActivity {
                     );
 
                     if (sodiumCursor.moveToFirst()) {
-                        foundInDb = true;
                         double sodiumPerUnit = sodiumCursor.getDouble(0);
                         String dbUnit = sodiumCursor.getString(1);
                         double conversionFactor = getConversionFactor(unit, dbUnit);
                         sodiumAmount = quantity * conversionFactor * sodiumPerUnit;
+                    } else {
+                        // ✅ Check manual map if ingredient was manually entered
+                        if (manualSodiumMap.containsKey(name.toLowerCase())) {
+                            double sodiumPerUnit = manualSodiumMap.get(name.toLowerCase());
+                            double conversionFactor = 1.0; // optional: implement proper conversion if needed
+                            sodiumAmount = quantity * conversionFactor * sodiumPerUnit;
+                        } else {
+                            Toast.makeText(this, "Sodium data for \"" + name + "\" not found. Using 0 mg.", Toast.LENGTH_SHORT).show();
+                        }
                     }
                     sodiumCursor.close();
 
-                    if (!foundInDb) {
-                        // Ask user for sodium if not found (for now, just skip or default to 0)
-                        // Optional: You can show a dialog to manually enter sodium
-                        Toast.makeText(this, "Sodium data for \"" + name + "\" not found. Using 0 mg.", Toast.LENGTH_SHORT).show();
-                    }
-
-                    // Debug log (optional)
-                    android.util.Log.d("SAVE_RECIPE", name + " | Qty: " + quantity + " " + unit + " | Sodium: " + sodiumAmount);
-
+                    // ✅ Save ingredient to RecipeIngredient table
                     ContentValues ingredientValues = new ContentValues();
                     ingredientValues.put("RecipeID", recipeId);
                     ingredientValues.put("Ingredient", name);
                     ingredientValues.put("Quantity", quantity);
                     ingredientValues.put("Unit", unit);
-                    ingredientValues.put("SodiumAmount", sodiumAmount);
+                    ingredientValues.put("SodiumAmount", sodiumAmount);  // total sodium
 
                     database.insert("RecipeIngredient", null, ingredientValues);
                 }
@@ -354,10 +398,20 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
     private void loadRecipeById(int recipeId) {
         ingredientList.clear();
         totalSodium = 0;
+
+        // ✅ Get serving count for the loaded recipe
+        int servingCount = 1;
+        Cursor recipeCursor = database.rawQuery(
+                "SELECT ServingCount FROM Recipe WHERE RecipeID = ?",
+                new String[]{String.valueOf(recipeId)}
+        );
+        if (recipeCursor.moveToFirst()) {
+            servingCount = recipeCursor.getInt(0);
+        }
+        recipeCursor.close();
 
         Cursor cursor = database.rawQuery(
                 "SELECT Ingredient, Quantity, Unit, SodiumAmount FROM RecipeIngredient WHERE RecipeID = ?",
@@ -371,20 +425,25 @@ public class MainActivity extends AppCompatActivity {
             double sodium = cursor.getDouble(3);
 
             totalSodium += sodium;
-            ingredientList.add(name + " - " + qty + " " + unit + " : " + sodium + " mg");
+
+            double perServing = (servingCount > 0) ? sodium / servingCount : sodium;
+            ingredientList.add(name + " - " + qty + " " + unit + " : " +
+                    String.format("%.2f", sodium) + " mg total | " +
+                    String.format("%.2f", perServing) + " mg/serving");
         }
 
         cursor.close();
 
         adapter.notifyDataSetChanged();
-        totalSodiumText.setText("Total Sodium: " + totalSodium + " mg");
+        totalSodiumText.setText(String.format("Total Sodium: %.2f mg", totalSodium));
+        updatePerServingText(); // Optional: also update main per-serving label
         updateSodiumWarning();
 
         // Clear inputs
         ingredientName.setText("");
         ingredientQuantity.setText("");
         unitSpinner.setSelection(0);
-        sodiumContent.setText("");
+        servingCountField.setText("");
     }
 
     @Override
@@ -394,13 +453,12 @@ public class MainActivity extends AppCompatActivity {
         }
         super.onDestroy();
     }
+
     @Override
     protected void onResume() {
         super.onResume();
         boolean isYellow = prefs.getBoolean("paleYellow", false);
-        layout.setBackgroundColor(getResources().getColor(
-                isYellow ? R.color.pale_yellow : android.R.color.white
-        ));
+        layout.setBackgroundColor(getResources().getColor(isYellow ? R.color.pale_yellow : android.R.color.white));
     }
 }
 

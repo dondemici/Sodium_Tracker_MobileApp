@@ -62,10 +62,11 @@ public class DatabaseActivity extends AppCompatActivity implements RecipeAdapter
     private void loadRecipes() {
         recipeList.clear();
 
-        Cursor recipeCursor = database.rawQuery("SELECT RecipeID, Name FROM Recipe", null);
+        Cursor recipeCursor = database.rawQuery("SELECT RecipeID, Name, ServingCount FROM Recipe", null);
         while (recipeCursor.moveToNext()) {
             int recipeId = recipeCursor.getInt(0);
             String recipeName = recipeCursor.getString(1);
+            int servingCount = recipeCursor.getInt(2);
 
             Cursor detailCursor = database.rawQuery(
                     "SELECT COUNT(*), SUM(SodiumAmount) FROM RecipeIngredient WHERE RecipeID = ?",
@@ -80,7 +81,10 @@ public class DatabaseActivity extends AppCompatActivity implements RecipeAdapter
             }
             detailCursor.close();
 
-            recipeList.add(new Recipe(recipeId, recipeName, ingredientCount, totalSodium));
+            double sodiumPerServing = (servingCount > 0) ? totalSodium : totalSodium;
+
+            recipeList.add(new Recipe(recipeId, recipeName, ingredientCount, sodiumPerServing, servingCount));
+
         }
 
         recipeCursor.close();

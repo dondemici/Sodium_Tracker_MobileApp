@@ -39,7 +39,7 @@ public class DailyLogAdapter extends RecyclerView.Adapter<DailyLogAdapter.LogVie
         holder.dateText.setText(entry.getDate());
         holder.recipeText.setText(entry.getRecipeName());
         holder.mealText.setText(entry.getMealType());
-        holder.sodiumText.setText(entry.getSodium() + " mg");
+        holder.sodiumText.setText(String.format("%.2f mg", entry.getSodium()));
 
         holder.editButton.setOnClickListener(v -> listener.onEditClick(entry));
         holder.deleteButton.setOnClickListener(v -> listener.onDeleteClick(entry));

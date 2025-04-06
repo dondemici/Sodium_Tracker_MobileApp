@@ -21,10 +21,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 "SodiumPerUnit REAL, " +
                 "Unit TEXT)");
 
-        // Recipe names
+        // Recipe names - updated with ServingCount
         db.execSQL("CREATE TABLE IF NOT EXISTS Recipe (" +
                 "RecipeID INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                "Name TEXT UNIQUE)");
+                "Name TEXT UNIQUE, " +
+                "ServingCount INTEGER DEFAULT 1)");
 
         // Recipe ingredients
         db.execSQL("CREATE TABLE IF NOT EXISTS RecipeIngredient (" +
@@ -34,22 +35,24 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 "Unit TEXT, " +
                 "SodiumAmount REAL)");
 
-        insertInitialSodiumData(db);
-
-
+        // Daily log
         db.execSQL("CREATE TABLE IF NOT EXISTS DailyLog (" +
                 "LogID INTEGER PRIMARY KEY AUTOINCREMENT, " +
                 "LogDate TEXT, " +
                 "RecipeName TEXT, " +
                 "MealType TEXT, " +
                 "SodiumAmount REAL)");
+
+        insertInitialSodiumData(db);
     }
+
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         db.execSQL("DROP TABLE IF EXISTS SodiumTable");
         db.execSQL("DROP TABLE IF EXISTS Recipe");
         db.execSQL("DROP TABLE IF EXISTS RecipeIngredient");
+        db.execSQL("DROP TABLE IF EXISTS DailyLog");
         onCreate(db);
     }
 

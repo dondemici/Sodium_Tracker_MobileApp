@@ -19,15 +19,9 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.github.mikephil.charting.charts.BarChart;
-import com.github.mikephil.charting.components.XAxis;
-import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.BarData;
 import com.github.mikephil.charting.data.BarDataSet;
 import com.github.mikephil.charting.data.BarEntry;
-import com.github.mikephil.charting.data.BarEntry;
-import com.github.mikephil.charting.data.BarDataSet;
-import com.github.mikephil.charting.data.BarData;
-import com.github.mikephil.charting.formatter.ValueFormatter;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 import java.util.ArrayList;
@@ -150,21 +144,27 @@ public class DailyTrackerActivity extends AppCompatActivity implements DailyLogA
                 return;
             }
 
-            double totalSodiumForRecipe = 0;
-            Cursor sodiumCursor = database.rawQuery(
-                    "SELECT SUM(SodiumAmount) FROM RecipeIngredient WHERE RecipeID = (SELECT RecipeID FROM Recipe WHERE Name = ?)",
-                    new String[]{selectedRecipe}
+            double sodiumPerServing = 0;
+            Cursor servingCursor = database.rawQuery(
+                    "SELECT SUM(SodiumAmount), (SELECT ServingCount FROM Recipe WHERE Name = ?) FROM RecipeIngredient WHERE RecipeID = (SELECT RecipeID FROM Recipe WHERE Name = ?)",
+                    new String[]{selectedRecipe, selectedRecipe}
             );
-            if (sodiumCursor.moveToFirst()) {
-                totalSodiumForRecipe = sodiumCursor.getDouble(0);
+            if (servingCursor.moveToFirst()) {
+                double totalSodium = servingCursor.getDouble(0);
+                int servingCount = servingCursor.getInt(1);
+                if (servingCount > 0) {
+                    sodiumPerServing = totalSodium / servingCount;
+                } else {
+                    sodiumPerServing = totalSodium;
+                }
             }
-            sodiumCursor.close();
+            servingCursor.close();
 
             ContentValues values = new ContentValues();
             values.put("LogDate", selectedDate);
             values.put("RecipeName", selectedRecipe);
             values.put("MealType", mealType);
-            values.put("SodiumAmount", totalSodiumForRecipe);
+            values.put("SodiumAmount", sodiumPerServing);
             database.insert("DailyLog", null, values);
 
             loadLogsForDate(selectedDate);
@@ -213,7 +213,7 @@ public class DailyTrackerActivity extends AppCompatActivity implements DailyLogA
         BarDataSet dataSet = new BarDataSet(entries, "Average Sodium Intake (mg)");
         BarData barData = new BarData(dataSet);
         popupBarChart.setData(barData);
-        popupBarChart.invalidate(); // refresh chart
+        popupBarChart.invalidate();
 
         new android.app.AlertDialog.Builder(this)
                 .setTitle(type.equals("week") ? "Weekly Sodium Average" : "Monthly Sodium Average")
@@ -228,7 +228,8 @@ public class DailyTrackerActivity extends AppCompatActivity implements DailyLogA
             totalSodium += entry.getSodium();
         }
 
-        totalSodiumText.setText("Total Sodium Today: " + totalSodium + " mg");
+        //totalSodiumText.setText("Total Sodium Today: " + totalSodium + " mg");
+        totalSodiumText.setText(String.format("Total Sodium Today: %.2f mg", totalSodium));
 
         if (totalSodium > 2300) {
             totalSodiumText.setTextColor(Color.RED);
